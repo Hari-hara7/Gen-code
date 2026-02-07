@@ -142,6 +142,11 @@ async function main() {
   console.log("🌱 Seeding database...");
 
   // Clear existing data
+  await prisma.orderItem.deleteMany();
+  await prisma.order.deleteMany();
+  await prisma.recentlyViewed.deleteMany();
+  await prisma.rating.deleteMany();
+  await prisma.wishlistItem.deleteMany();
   await prisma.cartItem.deleteMany();
   await prisma.cart.deleteMany();
   await prisma.product.deleteMany();

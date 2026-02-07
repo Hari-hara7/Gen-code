@@ -4,21 +4,39 @@ import { useParams, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
-import { Star, ShieldCheck, RotateCcw, Truck, Check, ChevronRight } from "lucide-react";
+import { useState, useEffect } from "react";
+import {
+  Star,
+  ShieldCheck,
+  RotateCcw,
+  Truck,
+  Check,
+  ChevronRight,
+  Heart,
+} from "lucide-react";
 import { Button } from "~/components/ui/button";
 import { Badge } from "~/components/ui/badge";
 import { Separator } from "~/components/ui/separator";
+import { Skeleton } from "~/components/ui/skeleton";
 import { api } from "~/trpc/react";
+import { toast } from "sonner";
 
-function RatingStars({ rating, reviewCount }: { rating: number; reviewCount: number }) {
+function RatingStars({
+  rating,
+  reviewCount,
+}: {
+  rating: number;
+  reviewCount: number;
+}) {
   const fullStars = Math.floor(rating);
   const hasHalf = rating - fullStars >= 0.5;
   const emptyStars = 5 - fullStars - (hasHalf ? 1 : 0);
 
   return (
     <div className="flex items-center gap-2">
-      <span className="text-sm text-[#007185] font-medium">{rating.toFixed(1)}</span>
+      <span className="text-sm text-[#007185] font-medium">
+        {rating.toFixed(1)}
+      </span>
       <div className="flex items-center">
         {Array.from({ length: fullStars }).map((_, i) => (
           <Star
@@ -35,15 +53,214 @@ function RatingStars({ rating, reviewCount }: { rating: number; reviewCount: num
           </div>
         )}
         {Array.from({ length: emptyStars }).map((_, i) => (
-          <Star
-            key={`empty-${i}`}
-            className="h-5 w-5 text-[#FFA41C]"
-          />
+          <Star key={`empty-${i}`} className="h-5 w-5 text-[#FFA41C]" />
         ))}
       </div>
       <span className="text-sm text-[#007185] hover:text-[#C7511F] hover:underline cursor-pointer">
         {reviewCount.toLocaleString()} ratings
       </span>
+    </div>
+  );
+}
+
+function InteractiveRating({ productId }: { productId: string }) {
+  const { data: session } = useSession();
+  const router = useRouter();
+  const utils = api.useUtils();
+  const [hovered, setHovered] = useState(0);
+
+  const { data: userRating } = api.rating.getUserRating.useQuery(
+    { productId },
+    { enabled: !!session }
+  );
+
+  const rateMutation = api.rating.rate.useMutation({
+    onSuccess: (data) => {
+      void utils.rating.getUserRating.invalidate({ productId });
+      void utils.rating.getProductRating.invalidate({ productId });
+      void utils.product.getById.invalidate({ id: productId });
+      toast.success(`Rated ${data.rating.value} out of 5 stars`, {
+        description: `Average rating is now ${data.averageRating.toFixed(1)}`,
+      });
+    },
+  });
+
+  const handleRate = (value: number) => {
+    if (!session) {
+      router.push("/login");
+      return;
+    }
+    rateMutation.mutate({ productId, value });
+  };
+
+  return (
+    <div className="mt-4 p-4 bg-[#F7FAFA] border border-[#D5D9D9] rounded-lg">
+      <h4 className="text-sm font-bold text-[#0F1111] mb-2">
+        {userRating ? "Update your rating" : "Rate this product"}
+      </h4>
+      <div className="flex items-center gap-3">
+        <div className="flex items-center gap-0.5">
+          {[1, 2, 3, 4, 5].map((star) => {
+            const currentRating = userRating ?? 0;
+            const isFilled = hovered > 0 ? star <= hovered : star <= currentRating;
+
+            return (
+              <button
+                key={star}
+                onClick={() => handleRate(star)}
+                onMouseEnter={() => setHovered(star)}
+                onMouseLeave={() => setHovered(0)}
+                disabled={rateMutation.isPending}
+                className="p-0.5 transition-transform hover:scale-110 disabled:opacity-50"
+              >
+                <Star
+                  className={`h-7 w-7 transition-colors ${
+                    isFilled
+                      ? "fill-[#FFA41C] text-[#FFA41C]"
+                      : "text-[#D5D9D9] hover:text-[#FFA41C]"
+                  }`}
+                />
+              </button>
+            );
+          })}
+        </div>
+        {userRating && (
+          <span className="text-xs text-[#565959]">
+            You rated this {userRating}/5
+          </span>
+        )}
+        {rateMutation.isPending && (
+          <span className="text-xs text-[#565959]">Saving...</span>
+        )}
+      </div>
+      {!session && (
+        <p className="text-xs text-[#565959] mt-2">
+          <Link
+            href="/login"
+            className="text-[#007185] hover:text-[#C7511F] hover:underline"
+          >
+            Sign in
+          </Link>{" "}
+          to rate this product
+        </p>
+      )}
+    </div>
+  );
+}
+
+function WishlistButton({
+  productId,
+  title,
+}: {
+  productId: string;
+  title: string;
+}) {
+  const { data: session } = useSession();
+  const router = useRouter();
+  const utils = api.useUtils();
+
+  const { data: isInWishlist } = api.wishlist.isInWishlist.useQuery(
+    { productId },
+    { enabled: !!session }
+  );
+
+  const toggleWishlist = api.wishlist.toggle.useMutation({
+    onSuccess: (data) => {
+      void utils.wishlist.isInWishlist.invalidate({ productId });
+      void utils.wishlist.get.invalidate();
+      void utils.wishlist.count.invalidate();
+      if (data.added) {
+        toast.success("Added to Wishlist", { description: title });
+      } else {
+        toast.info("Removed from Wishlist", { description: title });
+      }
+    },
+  });
+
+  const handleClick = () => {
+    if (!session) {
+      router.push("/login");
+      return;
+    }
+    toggleWishlist.mutate({ productId });
+  };
+
+  return (
+    <Button
+      onClick={handleClick}
+      disabled={toggleWishlist.isPending}
+      variant="outline"
+      className={`w-full rounded-full h-9 text-sm shadow-none ${
+        isInWishlist
+          ? "border-[#CC0C39] text-[#CC0C39] hover:bg-[#FFF0F0] hover:text-[#CC0C39]"
+          : "border-[#D5D9D9] text-[#0F1111] hover:bg-[#F0F2F2]"
+      }`}
+    >
+      <Heart
+        className={`h-4 w-4 mr-2 ${
+          isInWishlist ? "fill-[#CC0C39] text-[#CC0C39]" : ""
+        }`}
+      />
+      {isInWishlist ? "In Wishlist" : "Add to Wishlist"}
+    </Button>
+  );
+}
+
+function RecentlyViewedSection({ currentProductId }: { currentProductId: string }) {
+  const { data: session } = useSession();
+
+  const { data: recentItems } = api.recentlyViewed.getRecent.useQuery(
+    { limit: 5, excludeProductId: currentProductId },
+    { enabled: !!session }
+  );
+
+  if (!session || !recentItems || recentItems.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="max-w-7xl mx-auto px-4 pb-8">
+      <Separator className="bg-[#E7E7E7] mb-6" />
+      <h3 className="text-lg font-bold text-[#0F1111] mb-4">
+        Your recently viewed items
+      </h3>
+      <div className="flex gap-4 overflow-x-auto pb-2">
+        {recentItems.map((item) => (
+          <Link
+            key={item.id}
+            href={`/product/${item.product.id}`}
+            className="shrink-0 group"
+          >
+            <div className="w-[160px] bg-white border border-[#DDD] rounded-md overflow-hidden hover:shadow-md transition-shadow">
+              <div className="h-[140px] bg-[#F7F7F7] flex items-center justify-center p-3">
+                <Image
+                  src={item.product.image}
+                  alt={item.product.title}
+                  width={120}
+                  height={120}
+                  className="object-contain max-h-[120px] w-auto"
+                />
+              </div>
+              <div className="p-2">
+                <p className="text-xs text-[#0F1111] line-clamp-2 leading-tight group-hover:text-[#C7511F]">
+                  {item.product.title}
+                </p>
+                <div className="flex items-baseline mt-1">
+                  <span className="text-[10px] text-[#0F1111] relative -top-1">$</span>
+                  <span className="text-sm font-medium text-[#0F1111]">
+                    {Math.floor(item.product.price)}
+                  </span>
+                  <span className="text-[10px] text-[#0F1111] relative -top-1">
+                    {Math.round((item.product.price - Math.floor(item.product.price)) * 100)
+                      .toString()
+                      .padStart(2, "0")}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }
@@ -63,11 +280,24 @@ export default function ProductDetailPage() {
     { enabled: !!productId }
   );
 
+  // Track recently viewed
+  const trackView = api.recentlyViewed.track.useMutation();
+
+  useEffect(() => {
+    if (session && productId) {
+      trackView.mutate({ productId });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, productId]);
+
   const addToCart = api.cart.add.useMutation({
     onSuccess: () => {
       void utils.cart.get.invalidate();
       void utils.cart.count.invalidate();
       setAddedToCart(true);
+      toast.success("Added to Cart", {
+        description: product?.title ?? "Item added successfully",
+      });
       setTimeout(() => setAddedToCart(false), 3000);
     },
   });
@@ -99,21 +329,34 @@ export default function ProductDetailPage() {
     return (
       <div className="min-h-screen bg-white">
         <div className="max-w-7xl mx-auto px-4 py-6">
+          {/* Breadcrumb skeleton */}
+          <div className="flex items-center gap-2 mb-4">
+            <Skeleton className="h-4 w-12" />
+            <Skeleton className="h-4 w-4" />
+            <Skeleton className="h-4 w-20" />
+            <Skeleton className="h-4 w-4" />
+            <Skeleton className="h-4 w-32" />
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
             {/* Image skeleton */}
             <div className="md:col-span-4">
-              <div className="aspect-square bg-[#F0F0F0] rounded animate-pulse" />
+              <Skeleton className="aspect-square rounded-lg" />
             </div>
             {/* Details skeleton */}
             <div className="md:col-span-5 space-y-4">
-              <div className="h-8 bg-[#F0F0F0] rounded w-3/4 animate-pulse" />
-              <div className="h-4 bg-[#F0F0F0] rounded w-1/2 animate-pulse" />
-              <div className="h-6 bg-[#F0F0F0] rounded w-1/3 animate-pulse" />
-              <div className="h-20 bg-[#F0F0F0] rounded animate-pulse" />
+              <Skeleton className="h-8 w-3/4" />
+              <Skeleton className="h-4 w-1/2" />
+              <Skeleton className="h-5 w-1/3" />
+              <Skeleton className="h-px w-full" />
+              <Skeleton className="h-6 w-1/4" />
+              <Skeleton className="h-10 w-1/3" />
+              <Skeleton className="h-px w-full" />
+              <Skeleton className="h-20 w-full" />
+              <Skeleton className="h-20 w-full" />
             </div>
             {/* Buy box skeleton */}
             <div className="md:col-span-3">
-              <div className="h-64 bg-[#F0F0F0] rounded animate-pulse" />
+              <Skeleton className="h-[380px] rounded-lg" />
             </div>
           </div>
         </div>
@@ -152,7 +395,10 @@ export default function ProductDetailPage() {
       {/* Breadcrumb */}
       <div className="max-w-7xl mx-auto px-4 py-3">
         <nav className="flex items-center gap-1 text-sm text-[#565959]">
-          <Link href="/" className="text-[#007185] hover:text-[#C7511F] hover:underline">
+          <Link
+            href="/"
+            className="text-[#007185] hover:text-[#C7511F] hover:underline"
+          >
             Home
           </Link>
           <ChevronRight className="h-3 w-3" />
@@ -163,7 +409,9 @@ export default function ProductDetailPage() {
             {product.category}
           </Link>
           <ChevronRight className="h-3 w-3" />
-          <span className="text-[#0F1111] truncate max-w-[200px]">{product.title}</span>
+          <span className="text-[#0F1111] truncate max-w-[200px]">
+            {product.title}
+          </span>
         </nav>
       </div>
 
@@ -175,7 +423,9 @@ export default function ProductDetailPage() {
               <Check className="h-5 w-5 text-white" />
             </div>
             <div className="flex-1">
-              <span className="text-lg font-medium text-[#0F1111]">Added to Cart</span>
+              <span className="text-lg font-medium text-[#0F1111]">
+                Added to Cart
+              </span>
             </div>
             <Link
               href="/cart"
@@ -188,7 +438,7 @@ export default function ProductDetailPage() {
       )}
 
       {/* Main product layout */}
-      <div className="max-w-7xl mx-auto px-4 pb-12">
+      <div className="max-w-7xl mx-auto px-4 pb-8">
         <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
           {/* Product Image */}
           <div className="md:col-span-4">
@@ -219,7 +469,10 @@ export default function ProductDetailPage() {
             </p>
 
             {/* Rating */}
-            <RatingStars rating={product.rating} reviewCount={product.reviewCount} />
+            <RatingStars
+              rating={product.rating}
+              reviewCount={product.reviewCount}
+            />
 
             <Separator className="my-3 bg-[#E7E7E7]" />
 
@@ -228,7 +481,9 @@ export default function ProductDetailPage() {
               <span className="text-xs text-[#565959]">Price:</span>
             </div>
             <div className="flex items-baseline mb-1">
-              <span className="text-sm text-[#0F1111] relative -top-2.5">$</span>
+              <span className="text-sm text-[#0F1111] relative -top-2.5">
+                $
+              </span>
               <span className="text-[28px] font-medium text-[#0F1111] leading-none">
                 {dollars}
               </span>
@@ -245,7 +500,9 @@ export default function ProductDetailPage() {
             {/* Delivery */}
             <div className="text-sm text-[#0F1111] mb-4">
               <span>FREE delivery </span>
-              <span className="font-bold">Tomorrow, if ordered within 12 hrs</span>
+              <span className="font-bold">
+                Tomorrow, if ordered within 12 hrs
+              </span>
             </div>
 
             <Separator className="my-3 bg-[#E7E7E7]" />
@@ -262,7 +519,9 @@ export default function ProductDetailPage() {
 
             {/* About this item */}
             <div className="mb-4">
-              <h3 className="text-base font-bold text-[#0F1111] mb-2">About this item</h3>
+              <h3 className="text-base font-bold text-[#0F1111] mb-2">
+                About this item
+              </h3>
               <p className="text-sm text-[#333] leading-relaxed whitespace-pre-line">
                 {product.description}
               </p>
@@ -280,17 +539,28 @@ export default function ProductDetailPage() {
                 <span className="text-[#0F1111]">{product.category}</span>
 
                 <span className="text-[#565959] font-medium">Rating</span>
-                <span className="text-[#0F1111]">{product.rating} out of 5 stars</span>
+                <span className="text-[#0F1111]">
+                  {product.rating} out of 5 stars
+                </span>
 
                 <span className="text-[#565959] font-medium">Price</span>
-                <span className="text-[#0F1111]">${product.price.toFixed(2)}</span>
+                <span className="text-[#0F1111]">
+                  ${product.price.toFixed(2)}
+                </span>
 
                 <span className="text-[#565959] font-medium">Availability</span>
-                <span className={product.inStock ? "text-[#007600]" : "text-[#CC0C39]"}>
+                <span
+                  className={
+                    product.inStock ? "text-[#007600]" : "text-[#CC0C39]"
+                  }
+                >
                   {product.inStock ? "In Stock" : "Out of Stock"}
                 </span>
               </div>
             </div>
+
+            {/* Interactive Rating Section */}
+            <InteractiveRating productId={productId} />
           </div>
 
           {/* Buy Box (Right Sidebar) */}
@@ -298,7 +568,9 @@ export default function ProductDetailPage() {
             <div className="sticky top-32 border border-[#D5D9D9] rounded-lg p-5 space-y-3">
               {/* Price in buy box */}
               <div className="flex items-baseline">
-                <span className="text-sm text-[#0F1111] relative -top-2">$</span>
+                <span className="text-sm text-[#0F1111] relative -top-2">
+                  $
+                </span>
                 <span className="text-[24px] font-medium text-[#0F1111] leading-none">
                   {dollars}
                 </span>
@@ -313,8 +585,7 @@ export default function ProductDetailPage() {
               {/* Delivery */}
               <div className="text-sm text-[#0F1111]">
                 <p>
-                  FREE delivery{" "}
-                  <span className="font-bold">Tomorrow</span>
+                  FREE delivery <span className="font-bold">Tomorrow</span>
                 </p>
                 <p className="text-xs text-[#565959] mt-0.5">
                   Order within 12 hrs 30 mins
@@ -327,7 +598,9 @@ export default function ProductDetailPage() {
               {product.inStock ? (
                 <p className="text-lg text-[#007600] font-medium">In Stock</p>
               ) : (
-                <p className="text-lg text-[#CC0C39] font-medium">Out of Stock</p>
+                <p className="text-lg text-[#CC0C39] font-medium">
+                  Out of Stock
+                </p>
               )}
 
               {/* Quantity selector */}
@@ -373,6 +646,9 @@ export default function ProductDetailPage() {
                 </Button>
               )}
 
+              {/* Wishlist button */}
+              <WishlistButton productId={productId} title={product.title} />
+
               <Separator className="bg-[#E7E7E7]" />
 
               {/* Secure transaction */}
@@ -391,7 +667,9 @@ export default function ProductDetailPage() {
                 <div className="flex items-start gap-2">
                   <RotateCcw className="h-4 w-4 text-[#565959] mt-0.5" />
                   <div>
-                    <span className="text-[#007185]">30-day return policy</span>
+                    <span className="text-[#007185]">
+                      30-day return policy
+                    </span>
                   </div>
                 </div>
               </div>
@@ -399,6 +677,9 @@ export default function ProductDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* Recently Viewed Section */}
+      <RecentlyViewedSection currentProductId={productId} />
     </div>
   );
 }

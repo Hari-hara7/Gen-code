@@ -27,6 +27,7 @@ import {
   TableRow,
 } from "~/components/ui/table";
 import { api } from "~/trpc/react";
+import { toast } from "sonner";
 
 export default function CheckoutPage() {
   const { data: session, status } = useSession();
@@ -47,19 +48,53 @@ export default function CheckoutPage() {
     },
   });
 
+  const createOrder = api.order.create.useMutation();
+
   const handlePlaceOrder = async () => {
+    if (!cart?.items || cart.items.length === 0) return;
     setIsPlacing(true);
     // Simulate a brief processing delay
     await new Promise((resolve) => setTimeout(resolve, 1500));
-    clearCart.mutate(undefined, {
-      onSuccess: () => {
-        setOrderPlaced(true);
-        setIsPlacing(false);
+
+    // Save order to database first
+    const taxRate = 0.08;
+    const tax = cart.subtotal * taxRate;
+    const orderTotal = cart.subtotal + tax;
+
+    createOrder.mutate(
+      {
+        items: cart.items.map((item) => ({
+          productId: item.product.id,
+          quantity: item.quantity,
+          price: item.product.price,
+        })),
+        total: Math.round(orderTotal * 100) / 100,
       },
-      onError: () => {
-        setIsPlacing(false);
-      },
-    });
+      {
+        onSuccess: () => {
+          // Clear cart after order is saved
+          clearCart.mutate(undefined, {
+            onSuccess: () => {
+              setOrderPlaced(true);
+              setIsPlacing(false);
+              toast.success("Order placed successfully!", {
+                description: "Thank you for your purchase.",
+              });
+              void utils.order.getAll.invalidate();
+              void utils.order.count.invalidate();
+            },
+            onError: () => {
+              setIsPlacing(false);
+              toast.error("Failed to clear cart after order.");
+            },
+          });
+        },
+        onError: () => {
+          setIsPlacing(false);
+          toast.error("Failed to place order. Please try again.");
+        },
+      }
+    );
   };
 
   // Not authenticated

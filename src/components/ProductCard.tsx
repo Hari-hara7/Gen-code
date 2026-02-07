@@ -2,9 +2,13 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Star } from "lucide-react";
+import { Star, Heart } from "lucide-react";
 import { Card, CardContent } from "~/components/ui/card";
 import { Badge } from "~/components/ui/badge";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import { api } from "~/trpc/react";
+import { toast } from "sonner";
 
 interface ProductCardProps {
   id: string;
@@ -54,6 +58,61 @@ function RatingStars({ rating, reviewCount }: { rating: number; reviewCount: num
   );
 }
 
+function WishlistButton({ productId, title }: { productId: string; title: string }) {
+  const { data: session } = useSession();
+  const router = useRouter();
+  const utils = api.useUtils();
+
+  const { data: isInWishlist } = api.wishlist.isInWishlist.useQuery(
+    { productId },
+    { enabled: !!session }
+  );
+
+  const toggleWishlist = api.wishlist.toggle.useMutation({
+    onSuccess: (data) => {
+      void utils.wishlist.isInWishlist.invalidate({ productId });
+      void utils.wishlist.get.invalidate();
+      void utils.wishlist.count.invalidate();
+      if (data.added) {
+        toast.success("Added to Wishlist", {
+          description: title,
+        });
+      } else {
+        toast.info("Removed from Wishlist", {
+          description: title,
+        });
+      }
+    },
+  });
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!session) {
+      router.push("/login");
+      return;
+    }
+    toggleWishlist.mutate({ productId });
+  };
+
+  return (
+    <button
+      onClick={handleClick}
+      disabled={toggleWishlist.isPending}
+      className="absolute top-2 right-2 z-10 p-1.5 rounded-full bg-white/90 hover:bg-white shadow-sm border border-[#DDD] transition-all hover:scale-110"
+      title={isInWishlist ? "Remove from Wishlist" : "Add to Wishlist"}
+    >
+      <Heart
+        className={`h-4 w-4 transition-colors ${
+          isInWishlist
+            ? "fill-[#CC0C39] text-[#CC0C39]"
+            : "text-[#565959] hover:text-[#CC0C39]"
+        }`}
+      />
+    </button>
+  );
+}
+
 export function ProductCard({
   id,
   title,
@@ -88,6 +147,7 @@ export function ProductCard({
           >
             {category}
           </Badge>
+          <WishlistButton productId={id} title={title} />
         </div>
 
         {/* Content */}

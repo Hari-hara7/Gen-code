@@ -1,6 +1,10 @@
 import { productRouter } from "~/server/api/routers/product";
 import { cartRouter } from "~/server/api/routers/cart";
 import { authRouter } from "~/server/api/routers/auth";
+import { wishlistRouter } from "~/server/api/routers/wishlist";
+import { ratingRouter } from "~/server/api/routers/rating";
+import { recentlyViewedRouter } from "~/server/api/routers/recentlyViewed";
+import { orderRouter } from "~/server/api/routers/order";
 import { createCallerFactory, createTRPCRouter } from "~/server/api/trpc";
 
 /**
@@ -12,6 +16,10 @@ export const appRouter = createTRPCRouter({
   product: productRouter,
   cart: cartRouter,
   auth: authRouter,
+  wishlist: wishlistRouter,
+  rating: ratingRouter,
+  recentlyViewed: recentlyViewedRouter,
+  order: orderRouter,
 });
 
 // export type definition of API

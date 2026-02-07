@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useSession, signOut } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { ShoppingCart, Search, User, ChevronDown, MapPin, Menu } from "lucide-react";
+import { ShoppingCart, Search, User, ChevronDown, MapPin, Menu, Heart } from "lucide-react";
 import { Input } from "~/components/ui/input";
 import { Button } from "~/components/ui/button";
 import {
@@ -114,7 +114,13 @@ export function Navbar() {
                   Your Cart
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  onClick={() => router.push("/checkout")}
+                  onClick={() => router.push("/wishlist")}
+                  className="cursor-pointer"
+                >
+                  Your Wishlist
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => router.push("/orders")}
                   className="cursor-pointer"
                 >
                   Your Orders
@@ -142,9 +148,17 @@ export function Navbar() {
           )}
         </div>
 
+        {/* Wishlist */}
+        <Link
+          href="/wishlist"
+          className="hidden md:flex items-center border border-transparent px-2 py-1 hover:border-white rounded-sm mx-0.5 shrink-0"
+        >
+          <Heart className="h-5 w-5" />
+        </Link>
+
         {/* Returns & Orders */}
         <Link
-          href="/checkout"
+          href="/orders"
           className="hidden md:flex flex-col text-xs leading-tight border border-transparent px-2 py-1 hover:border-white rounded-sm mx-1 shrink-0"
         >
           <span className="text-[#CCCCCC]">Returns</span>
@@ -207,6 +221,18 @@ export function Navbar() {
           className="px-2 py-1 border border-transparent hover:border-white rounded-sm whitespace-nowrap"
         >
           Grocery
+        </Link>
+        <Link
+          href="/orders"
+          className="px-2 py-1 border border-transparent hover:border-white rounded-sm whitespace-nowrap"
+        >
+          Orders
+        </Link>
+        <Link
+          href="/wishlist"
+          className="px-2 py-1 border border-transparent hover:border-white rounded-sm whitespace-nowrap"
+        >
+          Wishlist
         </Link>
         <Link
           href="/"
